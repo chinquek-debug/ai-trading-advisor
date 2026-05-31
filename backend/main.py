@@ -7,7 +7,12 @@ import asyncio
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://finance.yahoo.com/",
+}
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 async def get_price_primary(ticker, client):
@@ -56,12 +61,19 @@ async def get_price_primary(ticker, client):
 async def get_yahoo_fundamentals(ticker, client):
     """Yahoo Finance quoteSummary for fundamentals and analyst data"""
     try:
-        modules = "summaryDetail,defaultKeyStatistics,financialData,recommendationTrend,upgradeDowngradeHistory,earnings"
-        url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules={modules}"
+        crumb = None
+        try:
+            crumb_resp = await client.get("https://query1.finance.yahoo.com/v1/test/getcrumb", headers=HEADERS, timeout=8)
+            if crumb_resp.status_code == 200:
+                crumb = crumb_resp.text.strip()
+        except:
+            pass
+        modules = "summaryDetail,defaultKeyStatistics,financialData,recommendationTrend,upgradeDowngradeHistory"
+        crumb_param = f"&crumb={crumb}" if crumb else ""
+        url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules={modules}{crumb_param}"
         resp = await client.get(url, headers=HEADERS, timeout=12)
         if resp.status_code != 200:
-            # Try alternate host
-            url2 = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules={modules}"
+            url2 = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules={modules}{crumb_param}"
             resp = await client.get(url2, headers=HEADERS, timeout=12)
 
         sd = resp.json().get("quoteSummary", {}).get("result", [{}])[0] if resp.status_code == 200 else {}
@@ -288,7 +300,7 @@ Be decisive and thorough. Every bullet must reference specific data."""
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
             headers={"Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01"},
-            json={"model": "claude-sonnet-4-20250514", "max_tokens": 2500, "messages": [{"role": "user", "content": prompt}]},
+            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 2500, "messages": [{"role": "user", "content": prompt}]},
             timeout=60
         )
         result = resp.json()
