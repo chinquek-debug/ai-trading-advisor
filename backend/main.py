@@ -179,8 +179,8 @@ async def get_ai_rec(ticker, price_data, fundamentals, news_data, sentiment, fea
 - Today's Change: {price_data.get('change_pct', 'N/A')}%
 - 52-Week High: ${high if high else 'N/A'} ({f"{from_high}% from high" if from_high else 'N/A'})
 - 52-Week Low: ${low if low else 'N/A'} ({f"+{from_low}% from low" if from_low else 'N/A'})
-- Current Volume: {price_data.get('current_volume', 'N/A'):,} if isinstance(price_data.get('current_volume'), int) else price_data.get('current_volume', 'N/A')
-- Avg Volume: {price_data.get('avg_volume', 'N/A'):,} if isinstance(price_data.get('avg_volume'), int) else price_data.get('avg_volume', 'N/A')
+- Current Volume: {str(price_data.get('current_volume', 'N/A'))}
+- Avg Volume: {str(price_data.get('avg_volume', 'N/A'))}
 - Market Cap: {price_data.get('market_cap', 'N/A')}
 
 === VALUATION ===
