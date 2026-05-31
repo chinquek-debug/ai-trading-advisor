@@ -148,7 +148,7 @@ Short-term trade or longer hold?
 
 Be decisive. Max 250 words."""
 
-    try:
+ try:
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
             headers={
@@ -157,17 +157,17 @@ Be decisive. Max 250 words."""
                 "anthropic-version": "2023-06-01"
             },
             json={
-                "model": "claude-sonnet-4-20250514",
+                "model": "claude-haiku-4-5-20251001",
                 "max_tokens": 1000,
                 "messages": [{"role": "user", "content": prompt}]
             },
             timeout=30
         )
         result = resp.json()
-     text = "".join(c.get("text", "") for c in result.get("content", []))
-if not text:
-    return {"recommendation": str(result)}
-return {"recommendation": text}
+        text = "".join(c.get("text", "") for c in result.get("content", []))
+        if not text:
+            return {"recommendation": f"DEBUG: {str(result)[:500]}"}
+        return {"recommendation": text}
     except Exception as e:
         return {"error": str(e)}
 
