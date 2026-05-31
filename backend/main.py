@@ -164,8 +164,10 @@ Be decisive. Max 250 words."""
             timeout=30
         )
         result = resp.json()
-        text = "".join(c.get("text", "") for c in result.get("content", []))
-        return {"recommendation": text}
+     text = "".join(c.get("text", "") for c in result.get("content", []))
+if not text:
+    return {"recommendation": str(result)}
+return {"recommendation": text}
     except Exception as e:
         return {"error": str(e)}
 
