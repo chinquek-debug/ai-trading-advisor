@@ -371,3 +371,4 @@ async def analyze_portfolio(tickers: str, shares: str = "", costs: str = ""):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+# updated Sun Jun  7 03:27:09 UTC 2026
