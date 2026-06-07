@@ -26,6 +26,9 @@ async def get_price_data(ticker, client):
                 price = meta.get("regularMarketPrice") or meta.get("chartPreviousClose")
                 prev = meta.get("chartPreviousClose") or meta.get("previousClose")
                 chg = round((price - prev) / prev * 100, 2) if price and prev and prev != 0 else None
+                # Cap unrealistic daily moves (data glitch protection)
+                if chg and abs(chg) > 25:
+                    chg = None
                 return {
                     "price": round(price, 2) if price else None,
                     "change_pct": chg,
@@ -217,10 +220,11 @@ You are advising a real investor who holds this position. Be direct, specific, a
 **CONVICTION: [HIGH / MEDIUM / LOW]**
 
 ## SUMMARY
-• Overall verdict in one sentence referencing position value
-• Key bullish signal
-• Key bearish risk  
-• One specific action to consider
+• Overall verdict in one sentence including current price and position status
+• Most important bullish signal from the data
+• Most important bearish risk to watch
+• Specific action recommendation for this investor
+• One sentence on what to watch in next 30 days
 
 ## PRICE & TECHNICAL ANALYSIS
 • Price position in 52-week range
