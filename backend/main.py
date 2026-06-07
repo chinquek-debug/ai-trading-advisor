@@ -9,18 +9,10 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
-# Multiple sources - use whichever responds
 async def get_price_data(ticker, client):
-    """Try multiple free APIs for price data"""
-    
-    # Source 1: Yahoo Finance v8 chart (most data)
     try:
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1y"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "*/*",
-            "Referer": "https://finance.yahoo.com"
-        }
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "*/*", "Referer": "https://finance.yahoo.com"}
         resp = await client.get(url, headers=headers, timeout=10)
         if resp.status_code == 200:
             data = resp.json()
@@ -42,12 +34,9 @@ async def get_price_data(ticker, client):
                     "avg_volume": int(sum(valid_vols)/len(valid_vols)) if valid_vols else None,
                     "current_volume": meta.get("regularMarketVolume"),
                     "market_cap": meta.get("marketCap"),
-                    "source": "yahoo_v8"
                 }
-    except Exception as e:
+    except:
         pass
-
-    # Source 2: Yahoo Finance v7 quote
     try:
         url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}"
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -58,57 +47,21 @@ async def get_price_data(ticker, client):
                 price = q.get("regularMarketPrice")
                 prev = q.get("regularMarketPreviousClose")
                 chg = round((price - prev) / prev * 100, 2) if price and prev else None
-                return {
-                    "price": round(price, 2),
-                    "change_pct": chg,
-                    "week52_high": q.get("fiftyTwoWeekHigh"),
-                    "week52_low": q.get("fiftyTwoWeekLow"),
-                    "avg_volume": q.get("averageDailyVolume3Month"),
-                    "current_volume": q.get("regularMarketVolume"),
-                    "market_cap": q.get("marketCap"),
-                    "source": "yahoo_v7"
-                }
+                return {"price": round(price, 2), "change_pct": chg, "week52_high": q.get("fiftyTwoWeekHigh"), "week52_low": q.get("fiftyTwoWeekLow"), "avg_volume": q.get("averageDailyVolume3Month"), "current_volume": q.get("regularMarketVolume"), "market_cap": q.get("marketCap")}
     except:
         pass
-
-    # Source 3: Styvio free API (no key needed)
-    try:
-        url = f"https://styvio.com/api/stock/{ticker}"
-        resp = await client.get(url, timeout=8)
-        if resp.status_code == 200:
-            d = resp.json()
-            price = d.get("price") or d.get("currentPrice")
-            if price:
-                return {
-                    "price": float(price),
-                    "change_pct": d.get("changePercent"),
-                    "week52_high": d.get("52WeekHigh"),
-                    "week52_low": d.get("52WeekLow"),
-                    "market_cap": d.get("marketCap"),
-                    "source": "styvio"
-                }
-    except:
-        pass
-
-    return {"price": None, "source": "none"}
+    return {"price": None}
 
 async def get_fundamentals(ticker, client):
-    """Get fundamentals from Yahoo Finance quoteSummary"""
     try:
         modules = "summaryDetail,defaultKeyStatistics,financialData,recommendationTrend,upgradeDowngradeHistory"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json",
-            "Referer": "https://finance.yahoo.com/"
-        }
-        # Try both query1 and query2
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "application/json", "Referer": "https://finance.yahoo.com/"}
         for host in ["query2", "query1"]:
             try:
                 url = f"https://{host}.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules={modules}"
                 resp = await client.get(url, headers=headers, timeout=12)
                 if resp.status_code == 200:
-                    data = resp.json()
-                    result = data.get("quoteSummary", {}).get("result", [None])
+                    result = resp.json().get("quoteSummary", {}).get("result", [None])
                     if result and result[0]:
                         sd = result[0]
                         detail = sd.get("summaryDetail", {})
@@ -116,40 +69,27 @@ async def get_fundamentals(ticker, client):
                         findata = sd.get("financialData", {})
                         rec = sd.get("recommendationTrend", {}).get("trend", [{}])[0] if sd.get("recommendationTrend") else {}
                         upgrades = sd.get("upgradeDowngradeHistory", {}).get("history", [])[:4]
-
                         def v(d, k):
                             val = d.get(k, {})
-                            if isinstance(val, dict):
-                                return val.get("fmt") or val.get("raw")
+                            if isinstance(val, dict): return val.get("fmt") or val.get("raw")
                             return val
-
                         return {
-                            "pe_ratio": v(detail, "trailingPE"),
-                            "forward_pe": v(detail, "forwardPE"),
-                            "dividend_yield": v(detail, "dividendYield"),
-                            "beta": v(detail, "beta"),
-                            "short_ratio": v(keystats, "shortRatio"),
-                            "short_pct_float": v(keystats, "shortPercentOfFloat"),
-                            "profit_margin": v(findata, "profitMargins"),
-                            "operating_margin": v(findata, "operatingMargins"),
-                            "debt_to_equity": v(findata, "debtToEquity"),
-                            "return_on_equity": v(findata, "returnOnEquity"),
-                            "revenue_growth": v(findata, "revenueGrowth"),
-                            "earnings_growth": v(findata, "earningsGrowth"),
-                            "free_cashflow": v(findata, "freeCashflow"),
-                            "target_mean": v(findata, "targetMeanPrice"),
-                            "target_low": v(findata, "targetLowPrice"),
-                            "target_high": v(findata, "targetHighPrice"),
+                            "pe_ratio": v(detail, "trailingPE"), "forward_pe": v(detail, "forwardPE"),
+                            "dividend_yield": v(detail, "dividendYield"), "beta": v(detail, "beta"),
+                            "short_ratio": v(keystats, "shortRatio"), "short_pct_float": v(keystats, "shortPercentOfFloat"),
+                            "profit_margin": v(findata, "profitMargins"), "operating_margin": v(findata, "operatingMargins"),
+                            "debt_to_equity": v(findata, "debtToEquity"), "return_on_equity": v(findata, "returnOnEquity"),
+                            "revenue_growth": v(findata, "revenueGrowth"), "earnings_growth": v(findata, "earningsGrowth"),
+                            "free_cashflow": v(findata, "freeCashflow"), "target_mean": v(findata, "targetMeanPrice"),
+                            "target_low": v(findata, "targetLowPrice"), "target_high": v(findata, "targetHighPrice"),
                             "analyst_rating": v(findata, "recommendationKey"),
                             "buy_count": (rec.get("strongBuy") or 0) + (rec.get("buy") or 0),
                             "hold_count": rec.get("hold") or 0,
                             "sell_count": (rec.get("sell") or 0) + (rec.get("strongSell") or 0),
                             "recent_upgrades": [f"{u.get('firm','')} → {u.get('toGrade','')} ({u.get('action','')})" for u in upgrades],
                         }
-            except:
-                continue
-    except:
-        pass
+            except: continue
+    except: pass
     return {}
 
 async def get_news_and_name(ticker, client):
@@ -177,8 +117,7 @@ async def get_stocktwits(ticker, client):
             b = s.get("basic", "") if s else ""
             if b == "Bullish": bull += 1
             elif b == "Bearish": bear += 1
-            if len(samples) < 5 and msg.get("body"):
-                samples.append(msg["body"][:150])
+            if len(samples) < 5 and msg.get("body"): samples.append(msg["body"][:150])
         total = bull + bear or 1
         return {"bull_pct": round(bull/total*100), "bear_pct": round(bear/total*100), "total": len(messages), "samples": samples}
     except:
@@ -192,7 +131,7 @@ async def get_fear_greed(client):
     except:
         return {"score": 50, "rating": "Neutral"}
 
-async def get_ai_rec(ticker, name, price_data, fundamentals, headlines, sentiment, fear_greed, client):
+async def get_ai_rec(ticker, name, price_data, fundamentals, headlines, sentiment, fear_greed, shares, cost_basis, client):
     if not ANTHROPIC_API_KEY:
         return {"error": "No ANTHROPIC_API_KEY set"}
 
@@ -200,126 +139,138 @@ async def get_ai_rec(ticker, name, price_data, fundamentals, headlines, sentimen
     high = price_data.get("week52_high")
     low = price_data.get("week52_low")
 
-    def pct_from(p, ref):
-        try: return round((p - ref) / ref * 100, 1)
+    def pct(p, r):
+        try: return round((p - r) / r * 100, 1)
         except: return None
 
-    from_high = pct_from(price, high) if price and high else None
-    from_low = pct_from(price, low) if price and low else None
-    analyst_upside = pct_from(price, fundamentals.get("target_mean")) if price and fundamentals.get("target_mean") else None
+    from_high = pct(price, high) if price and high else None
+    from_low = pct(price, low) if price and low else None
+    analyst_upside = pct(price, fundamentals.get("target_mean")) if price and fundamentals.get("target_mean") else None
 
-    headlines_str = "\n".join(f"- {h}" for h in headlines) or "- No recent headlines available"
-    samples_str = "\n".join(f'- "{s}"' for s in sentiment.get("samples", [])) or "- No messages"
+    # Portfolio position math
+    position_value = round(price * shares, 2) if price and shares else None
+    cost_total = round(cost_basis * shares, 2) if cost_basis and shares else None
+    gain_loss = round(position_value - cost_total, 2) if position_value and cost_total else None
+    gain_loss_pct = round((gain_loss / cost_total) * 100, 2) if gain_loss and cost_total else None
+
+    headlines_str = "\n".join(f"- {h}" for h in headlines) or "- No recent headlines"
+    samples_str = "\n".join(f'- "{s}"' for s in sentiment.get("samples", [])) or "- None"
     upgrades_str = "\n".join(f"  - {u}" for u in fundamentals.get("recent_upgrades", [])) or "  - None"
 
-    prompt = f"""You are a senior Wall Street analyst. Produce a thorough research report for {ticker} ({name}).
+    portfolio_section = ""
+    if shares:
+        portfolio_section = f"""
+=== YOUR POSITION ===
+- Shares held: {shares}
+- Cost basis per share: ${cost_basis if cost_basis else 'N/A'}
+- Total cost: ${cost_total if cost_total else 'N/A'}
+- Current position value: ${position_value if position_value else 'N/A'}
+- Unrealized gain/loss: ${gain_loss if gain_loss else 'N/A'} ({gain_loss_pct if gain_loss_pct else 'N/A'}%)
+"""
 
-=== PRICE DATA (Source: {price_data.get('source', 'unknown')}) ===
-- Current Price: ${price if price else 'UNAVAILABLE'}
+    prompt = f"""You are a senior portfolio manager conducting daily research on a client's holding in {ticker} ({name}).
+{portfolio_section}
+=== PRICE DATA ===
+- Current Price: ${price if price else 'N/A'}
 - Today's Change: {price_data.get('change_pct', 'N/A')}%
-- 52-Week High: ${high} ({from_high}% from high) 
+- 52-Week High: ${high} ({from_high}% from high)
 - 52-Week Low: ${low} (+{from_low}% above low)
-- Current Volume: {price_data.get('current_volume', 'N/A')}
-- Avg Daily Volume: {price_data.get('avg_volume', 'N/A')}
+- Volume: {price_data.get('current_volume', 'N/A')} (avg: {price_data.get('avg_volume', 'N/A')})
 - Market Cap: {price_data.get('market_cap', 'N/A')}
 
 === VALUATION ===
-- P/E Ratio (TTM): {fundamentals.get('pe_ratio', 'N/A')}
+- P/E (TTM): {fundamentals.get('pe_ratio', 'N/A')}
 - Forward P/E: {fundamentals.get('forward_pe', 'N/A')}
 - Beta: {fundamentals.get('beta', 'N/A')}
 - Dividend Yield: {fundamentals.get('dividend_yield', 'N/A')}
-- Short % of Float: {fundamentals.get('short_pct_float', 'N/A')}
-- Short Ratio: {fundamentals.get('short_ratio', 'N/A')}
+- Short % Float: {fundamentals.get('short_pct_float', 'N/A')}
 
 === FUNDAMENTALS ===
 - Profit Margin: {fundamentals.get('profit_margin', 'N/A')}
-- Operating Margin: {fundamentals.get('operating_margin', 'N/A')}
-- Revenue Growth YoY: {fundamentals.get('revenue_growth', 'N/A')}
+- Revenue Growth: {fundamentals.get('revenue_growth', 'N/A')}
 - Earnings Growth: {fundamentals.get('earnings_growth', 'N/A')}
-- Return on Equity: {fundamentals.get('return_on_equity', 'N/A')}
-- Debt-to-Equity: {fundamentals.get('debt_to_equity', 'N/A')}
+- ROE: {fundamentals.get('return_on_equity', 'N/A')}
+- Debt/Equity: {fundamentals.get('debt_to_equity', 'N/A')}
 - Free Cash Flow: {fundamentals.get('free_cashflow', 'N/A')}
 
-=== WALL STREET CONSENSUS ===
-- Analyst Rating: {fundamentals.get('analyst_rating', 'N/A')}
-- Buy: {fundamentals.get('buy_count', 0)} | Hold: {fundamentals.get('hold_count', 0)} | Sell: {fundamentals.get('sell_count', 0)}
-- Mean Price Target: ${fundamentals.get('target_mean', 'N/A')} ({analyst_upside}% from current)
+=== WALL STREET ===
+- Rating: {fundamentals.get('analyst_rating', 'N/A')}
+- Buy/Hold/Sell: {fundamentals.get('buy_count', 0)}/{fundamentals.get('hold_count', 0)}/{fundamentals.get('sell_count', 0)}
+- Mean Target: ${fundamentals.get('target_mean', 'N/A')} ({analyst_upside}% from current)
 - Target Range: ${fundamentals.get('target_low', 'N/A')} — ${fundamentals.get('target_high', 'N/A')}
-- Recent Rating Changes:
-{upgrades_str}
+- Recent Changes: {upgrades_str}
 
-=== RETAIL SENTIMENT (Stocktwits) ===
-- Bullish: {sentiment['bull_pct']}% | Bearish: {sentiment['bear_pct']}%
-- Messages analyzed: {sentiment['total']}
-- Sample comments:
-{samples_str}
+=== RETAIL SENTIMENT ===
+- Bullish: {sentiment['bull_pct']}% | Bearish: {sentiment['bear_pct']}% ({sentiment['total']} messages)
+- Comments: {samples_str}
 
-=== LATEST NEWS ===
+=== NEWS ===
 {headlines_str}
 
-=== MARKET MOOD ===
-- CNN Fear & Greed: {fear_greed['score']}/100 — {fear_greed['rating']}
+=== MARKET ===
+- Fear & Greed: {fear_greed['score']}/100 — {fear_greed['rating']}
 
 ---
-INSTRUCTIONS: Use ALL data above. Where data says N/A, note it briefly but still produce a full analysis using what IS available. Use your training knowledge about {ticker} to supplement where needed. Be decisive.
+You are advising a real investor who holds this position. Be direct, specific, and reference their actual position data. Use training knowledge to supplement any missing data.
 
-**RECOMMENDATION: [BUY / SELL / HOLD / WATCH]**
+**RECOMMENDATION: [BUY MORE / HOLD / TRIM / SELL]**
 **CONVICTION: [HIGH / MEDIUM / LOW]**
 
-**PRICE & TECHNICAL ANALYSIS**
-• Price position within 52-week range
-• Volume vs average assessment
-• Momentum and trend
+## SUMMARY
+• Overall verdict in one sentence referencing position value
+• Key bullish signal
+• Key bearish risk  
+• One specific action to consider
 
-**VALUATION**
-• P/E vs sector and historical norms
-• Over or undervalued at current price
-• Key valuation insight
+## PRICE & TECHNICAL ANALYSIS
+• Price position in 52-week range
+• Volume and momentum assessment
+• Near-term technical outlook
 
-**FUNDAMENTAL HEALTH**
+## VALUATION
+• Current valuation vs historical and sector norms
+• Over/undervalued assessment at current price
+
+## FUNDAMENTAL HEALTH
 • Revenue and earnings trajectory
-• Margin quality
-• Balance sheet strength
+• Margin and balance sheet quality
 
-**WALL STREET VIEW**
-• Analyst consensus and what it means
-• Price target upside/downside from current
-• Notable rating changes
+## WALL STREET VIEW
+• Analyst consensus and price target upside
+• Recent rating changes significance
 
-**RETAIL SENTIMENT**
-• What traders are saying
-• Alignment or divergence from fundamentals
+## RETAIL SENTIMENT
+• What traders are saying and reliability of signal
 
-**NEWS & CATALYSTS**
-• Impact of recent headlines
+## NEWS & CATALYSTS
+• Impact of recent headlines on thesis
 • Key upcoming catalysts
 
-**MARKET CONTEXT**
-• Fear & Greed positioning
-• Macro environment impact
+## PORTFOLIO IMPACT
+• How this position affects your overall portfolio
+• Whether sizing is appropriate
+• Hold, add, or reduce recommendation with specific reasoning tied to your cost basis
 
-**RISK FACTORS**
+## RISK FACTORS
 • Risk 1
 • Risk 2
 • Risk 3
-• Risk 4
 
-**BULL CASE**
+## BULL CASE
 • Reason 1
 • Reason 2
-• Reason 3
 
-**BEAR CASE**
+## BEAR CASE
 • Reason 1
 • Reason 2
-• Reason 3
 
-**PRICE TARGETS**
-• 30-day target: $[X] ([Y]% from current)
-• 90-day target: $[X] ([Y]% from current)
+## PRICE TARGETS
+• 30-day target: $X (Y% from current)
+• 90-day target: $X (Y% from current)
+• Stop-loss suggestion: $X
 • Time horizon: [short/medium/long-term]
 
-Reference specific numbers throughout. Be thorough and decisive."""
+Be thorough. Reference specific numbers and the client's actual position throughout."""
 
     try:
         resp = await client.post(
@@ -335,7 +286,7 @@ Reference specific numbers throughout. Be thorough and decisive."""
         return {"error": str(e)}
 
 @app.get("/analyze/{ticker}")
-async def analyze(ticker: str):
+async def analyze(ticker: str, shares: float = 0, cost_basis: float = 0):
     ticker = ticker.upper()
     async with httpx.AsyncClient() as client:
         price_data, fundamentals, news_data, sentiment, fear_greed = await asyncio.gather(
@@ -347,7 +298,13 @@ async def analyze(ticker: str):
         )
         name = news_data.get("name", ticker)
         headlines = news_data.get("headlines", [])
-        ai = await get_ai_rec(ticker, name, price_data, fundamentals, headlines, sentiment, fear_greed, client)
+        ai = await get_ai_rec(ticker, name, price_data, fundamentals, headlines, sentiment, fear_greed, shares, cost_basis, client)
+
+    price = price_data.get("price")
+    position_value = round(price * shares, 2) if price and shares else None
+    cost_total = round(cost_basis * shares, 2) if cost_basis and shares else None
+    gain_loss = round(position_value - cost_total, 2) if position_value and cost_total else None
+    gain_loss_pct = round((gain_loss / cost_total) * 100, 2) if gain_loss and cost_total else None
 
     return {
         "ticker": ticker,
@@ -356,8 +313,55 @@ async def analyze(ticker: str):
         "sentiment": sentiment,
         "headlines": headlines,
         "fear_greed": fear_greed,
+        "position": {"shares": shares, "cost_basis": cost_basis, "position_value": position_value, "cost_total": cost_total, "gain_loss": gain_loss, "gain_loss_pct": gain_loss_pct},
         "ai": ai
     }
+
+@app.get("/portfolio")
+async def analyze_portfolio(tickers: str, shares: str = "", costs: str = ""):
+    ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+    shares_list = [float(s.strip()) if s.strip() else 0 for s in shares.split(",")] if shares else [0] * len(ticker_list)
+    costs_list = [float(c.strip()) if c.strip() else 0 for c in costs.split(",")] if costs else [0] * len(ticker_list)
+
+    while len(shares_list) < len(ticker_list): shares_list.append(0)
+    while len(costs_list) < len(ticker_list): costs_list.append(0)
+
+    async with httpx.AsyncClient() as client:
+        fear_greed = await get_fear_greed(client)
+        results = []
+        for i, ticker in enumerate(ticker_list):
+            try:
+                price_data, fundamentals, news_data, sentiment = await asyncio.gather(
+                    get_price_data(ticker, client),
+                    get_fundamentals(ticker, client),
+                    get_news_and_name(ticker, client),
+                    get_stocktwits(ticker, client)
+                )
+                name = news_data.get("name", ticker)
+                headlines = news_data.get("headlines", [])
+                sh = shares_list[i]
+                cb = costs_list[i]
+                ai = await get_ai_rec(ticker, name, price_data, fundamentals, headlines, sentiment, fear_greed, sh, cb, client)
+
+                price = price_data.get("price")
+                position_value = round(price * sh, 2) if price and sh else None
+                cost_total = round(cb * sh, 2) if cb and sh else None
+                gain_loss = round(position_value - cost_total, 2) if position_value and cost_total else None
+                gain_loss_pct = round((gain_loss / cost_total) * 100, 2) if gain_loss and cost_total else None
+
+                results.append({
+                    "ticker": ticker,
+                    "price_info": {**price_data, "name": name},
+                    "fundamentals": fundamentals,
+                    "sentiment": sentiment,
+                    "headlines": headlines,
+                    "position": {"shares": sh, "cost_basis": cb, "position_value": position_value, "cost_total": cost_total, "gain_loss": gain_loss, "gain_loss_pct": gain_loss_pct},
+                    "ai": ai
+                })
+            except Exception as e:
+                results.append({"ticker": ticker, "error": str(e)})
+
+    return {"results": results, "fear_greed": fear_greed}
 
 @app.get("/health")
 async def health():
