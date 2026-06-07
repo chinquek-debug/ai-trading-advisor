@@ -25,7 +25,17 @@ function savePortfolio(p) {
 
 function parseRec(text) {
   if (!text) return {};
-  const rec = (text.match(/RECOMMENDATION[:\s]*\[?(BUY MORE|BUY|HOLD|TRIM|SELL|WATCH)\]?/i) || [])[1]?.toUpperCase();
+  // Try multiple formats
+  let rec = null;
+  const patterns = [
+    /\*\*RECOMMENDATION[:\s]*\[?(BUY MORE|BUY|HOLD|TRIM|SELL|WATCH)\]?\*\*/i,
+    /RECOMMENDATION[:\s]*\[?(BUY MORE|BUY|HOLD|TRIM|SELL|WATCH)\]?/i,
+    /\*\*(BUY MORE|HOLD|TRIM|SELL|WATCH|BUY)\*\*/i,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) { rec = m[1].toUpperCase(); break; }
+  }
   const conviction = (text.match(/CONVICTION[:\s]*\[?(HIGH|MEDIUM|LOW)\]?/i) || [])[1]?.toUpperCase();
   return { rec, conviction };
 }

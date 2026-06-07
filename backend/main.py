@@ -220,11 +220,12 @@ You are advising a real investor who holds this position. Be direct, specific, a
 **CONVICTION: [HIGH / MEDIUM / LOW]**
 
 ## SUMMARY
-• Overall verdict in one sentence including current price and position status
-• Most important bullish signal from the data
-• Most important bearish risk to watch
-• Specific action recommendation for this investor
-• One sentence on what to watch in next 30 days
+IMPORTANT: You MUST write exactly 5 bullet points here, each on its own line starting with •. Do not combine them.
+• [One sentence overall verdict including current price and % gain/loss on position]
+• [Most important bullish signal from the specific data above]
+• [Most important bearish risk to watch right now]
+• [Specific action: what should this investor do with their position and why]
+• [What to watch in next 30 days that could change this thesis]
 
 ## PRICE & TECHNICAL ANALYSIS
 • Price position in 52-week range
