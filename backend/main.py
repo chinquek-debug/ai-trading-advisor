@@ -372,3 +372,141 @@ async def analyze_portfolio(tickers: str, shares: str = "", costs: str = ""):
 async def health():
     return {"status": "ok"}
 # updated Sun Jun  7 03:27:09 UTC 2026
+
+
+# ============================================================
+# OPPORTUNITY SCANNER — finds next SNDK-type opportunities
+# ============================================================
+
+SCAN_UNIVERSE = {
+    "spin_offs": ["SNDK", "SOLV", "KVUE", "AMCX", "WBD", "GEHC", "GEV", "SOLV", "VLTO"],
+    "energy": ["XOM", "CVX", "COP", "OXY", "SLB", "HAL", "MPC", "VLO", "PSX", "DVN", "FANG", "CCJ", "UEC", "NXE"],
+    "biotech": ["MRNA", "BNTX", "REGN", "VRTX", "BIIB", "ALNY", "INCY", "BMRN", "EXAS", "RARE"],
+    "defense": ["LMT", "RTX", "NOC", "GD", "BA", "HII", "LDOS", "CACI", "AXON", "KTOS"],
+    "industrials": ["CAT", "DE", "EMR", "ETN", "ITW", "PH", "ROK", "XYL", "AME", "GWW"],
+    "shipping": ["ZIM", "DAC", "MATX", "SBLK", "GOGL", "NMM", "DLNG"],
+    "commodities": ["FCX", "NEM", "GOLD", "AA", "CLF", "MP", "LTHM", "ALB", "VALE", "RIO"],
+    "beaten_down": ["PARA", "WBD", "INTC", "PFE", "MRK", "BABA", "JD", "NIO", "RIVN", "LCID"],
+    "financials": ["JPM", "BAC", "WFC", "GS", "MS", "BX", "KKR", "APO", "ARES"],
+    "healthcare": ["UNH", "CVS", "CI", "HUM", "MOH", "CNC", "THC", "HCA", "DaVita"]
+}
+
+async def get_quick_quote(ticker, client):
+    """Fast price + key stats for screening"""
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1y"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "*/*", "Referer": "https://finance.yahoo.com"}
+        resp = await client.get(url, headers=headers, timeout=8)
+        if resp.status_code == 200:
+            result = resp.json().get("chart", {}).get("result", [None])[0]
+            if result:
+                meta = result.get("meta", {})
+                closes = [c for c in result.get("indicators", {}).get("quote", [{}])[0].get("close", []) if c]
+                volumes = [v for v in result.get("indicators", {}).get("quote", [{}])[0].get("volume", []) if v]
+                price = meta.get("regularMarketPrice") or meta.get("chartPreviousClose")
+                prev = meta.get("chartPreviousClose")
+                if not closes or not price:
+                    return None
+                week52_high = max(closes)
+                week52_low = min(closes)
+                avg_vol = sum(volumes) / len(volumes) if volumes else 0
+                curr_vol = meta.get("regularMarketVolume", 0)
+                pct_from_high = round((price - week52_high) / week52_high * 100, 1)
+                pct_from_low = round((price - week52_low) / week52_low * 100, 1)
+                vol_ratio = round(curr_vol / avg_vol, 2) if avg_vol else 0
+                # Score: lower from high = more beaten down, higher vol = more activity
+                opportunity_score = 0
+                if pct_from_high < -40: opportunity_score += 30  # Deep value
+                elif pct_from_high < -20: opportunity_score += 15
+                if vol_ratio > 2: opportunity_score += 25  # Unusual volume
+                elif vol_ratio > 1.5: opportunity_score += 10
+                if pct_from_low < 20: opportunity_score += 20  # Near lows reversing
+                return {
+                    "ticker": ticker,
+                    "price": round(price, 2),
+                    "week52_high": round(week52_high, 2),
+                    "week52_low": round(week52_low, 2),
+                    "pct_from_high": pct_from_high,
+                    "pct_from_low": pct_from_low,
+                    "vol_ratio": vol_ratio,
+                    "opportunity_score": opportunity_score
+                }
+    except:
+        pass
+    return None
+
+async def get_scan_ai_analysis(sector, opportunities, fear_greed, client):
+    """AI analyzes a sector's opportunities"""
+    if not ANTHROPIC_API_KEY or not opportunities:
+        return ""
+    
+    opp_text = "\n".join([
+        f"- {o['ticker']}: ${o['price']} | {o['pct_from_high']}% from 52w high | {o['pct_from_low']}% above 52w low | Volume ratio: {o['vol_ratio']}x avg"
+        for o in opportunities[:8]
+    ])
+
+    prompt = f"""You are a contrarian investment analyst looking for overlooked opportunities outside of mainstream AI stocks.
+
+SECTOR: {sector.upper()}
+MARKET MOOD: Fear & Greed {fear_greed['score']}/100 — {fear_greed['rating']}
+
+STOCKS SCREENED IN THIS SECTOR:
+{opp_text}
+
+Identify the TOP 2-3 most interesting opportunities in this sector. For each:
+
+**[TICKER] — [SIGNAL TYPE: Deep Value / Reversal / Momentum / Catalyst Play]**
+• Why this is interesting right now (specific data from above)
+• What catalyst could drive a significant move
+• Key risk to watch
+• Suggested approach: LEAPS / Common Stock / Wait for pullback
+
+Focus on NON-AI opportunities where the market may be underpricing future potential. Be specific and contrarian. Reference the actual price data above. Keep each analysis to 4 bullets max.
+
+End with:
+**SECTOR VERDICT:** One sentence on whether this sector is worth allocating to right now."""
+
+    try:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01"},
+            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 1000, "messages": [{"role": "user", "content": prompt}]},
+            timeout=45
+        )
+        result = resp.json()
+        return "".join(c.get("text", "") for c in result.get("content", []))
+    except:
+        return ""
+
+@app.get("/scan/opportunities")
+async def scan_opportunities():
+    async with httpx.AsyncClient() as client:
+        fear_greed = await get_fear_greed(client)
+        sector_results = []
+
+        for sector, tickers in SCAN_UNIVERSE.items():
+            # Get quick quotes for all tickers in sector concurrently
+            quotes = await asyncio.gather(*[get_quick_quote(t, client) for t in tickers])
+            valid = [q for q in quotes if q]
+            
+            # Sort by opportunity score
+            valid.sort(key=lambda x: x["opportunity_score"], reverse=True)
+            top_opportunities = valid[:6]
+
+            if top_opportunities:
+                ai_analysis = await get_scan_ai_analysis(sector, top_opportunities, fear_greed, client)
+                sector_results.append({
+                    "sector": sector,
+                    "opportunities": top_opportunities,
+                    "ai_analysis": ai_analysis,
+                    "top_score": top_opportunities[0]["opportunity_score"] if top_opportunities else 0
+                })
+
+        # Sort sectors by highest opportunity score
+        sector_results.sort(key=lambda x: x["top_score"], reverse=True)
+
+        return {
+            "sectors": sector_results,
+            "fear_greed": fear_greed,
+            "total_scanned": sum(len(SCAN_UNIVERSE[s]) for s in SCAN_UNIVERSE)
+        }
