@@ -18,7 +18,8 @@ const STORAGE_KEY = "portfolio_v1";
 const SECTOR_LABELS = {
   spin_offs: "🔄 Spin-Offs", energy: "⚡ Energy", biotech: "🧬 Biotech",
   defense: "🛡️ Defense", industrials: "🏭 Industrials", shipping: "🚢 Shipping",
-  commodities: "⛏️ Commodities", beaten_down: "📉 Deep Value", financials: "🏦 Financials", healthcare: "💊 Healthcare"
+  commodities: "⛏️ Commodities", beaten_down: "📉 Deep Value", financials: "🏦 Financials",
+  healthcare: "💊 Healthcare", overlooked_tech: "💻 Overlooked Tech"
 };
 
 function loadPortfolio() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; } }
@@ -439,7 +440,7 @@ export default function App() {
             <div style={{ background: "#0a0a0f", border: "1px solid #2a2a2a", borderRadius: 12, padding: "18px 22px", marginBottom: 20 }}>
               <div style={{ fontSize: 13, color: "#e0e0e0", fontFamily: "'Space Mono', monospace", fontWeight: 700, marginBottom: 6 }}>NEXT SNDK FINDER</div>
               <div style={{ fontSize: 11, color: "#ccc", lineHeight: 1.7, marginBottom: 16 }}>
-                Scans 80+ stocks across 10 sectors — energy, biotech, defense, industrials, shipping, commodities, and more. Identifies deep value, reversal setups, unusual volume, and overlooked opportunities outside of mainstream AI stocks.
+                Scans 100+ stocks across 11 sectors — energy, biotech, defense, industrials, shipping, commodities, overlooked tech, and more. Identifies deep value, reversal setups, unusual volume, and opportunities the market is ignoring.
               </div>
               <button onClick={runScan} disabled={scanning} style={{ background: scanning ? "#111" : "linear-gradient(135deg, #00e676, #1de9b6)", border: "none", borderRadius: 8, padding: "12px 32px", color: scanning ? "#777" : "#000", fontSize: 12, fontWeight: 700, cursor: scanning ? "not-allowed" : "pointer", fontFamily: "'Space Mono', monospace", letterSpacing: 1 }}>
                 {scanning ? "SCANNING 80+ STOCKS..." : "🔍 SCAN ALL SECTORS"}
