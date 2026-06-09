@@ -379,7 +379,7 @@ async def health():
 # ============================================================
 
 SCAN_UNIVERSE = {
-    "spin_offs": ["SNDK", "SOLV", "KVUE", "AMCX", "WBD", "GEHC", "GEV", "SOLV", "VLTO"],
+    "spin_offs": ["SNDK", "SOLV", "KVUE", "AMCX", "WBD", "GEHC", "GEV", "VLTO"],
     "energy": ["XOM", "CVX", "COP", "OXY", "SLB", "HAL", "MPC", "VLO", "PSX", "DVN", "FANG", "CCJ", "UEC", "NXE"],
     "biotech": ["MRNA", "BNTX", "REGN", "VRTX", "BIIB", "ALNY", "INCY", "BMRN", "EXAS", "RARE"],
     "defense": ["LMT", "RTX", "NOC", "GD", "BA", "HII", "LDOS", "CACI", "AXON", "KTOS"],
@@ -388,7 +388,8 @@ SCAN_UNIVERSE = {
     "commodities": ["FCX", "NEM", "GOLD", "AA", "CLF", "MP", "LTHM", "ALB", "VALE", "RIO"],
     "beaten_down": ["PARA", "WBD", "INTC", "PFE", "MRK", "BABA", "JD", "NIO", "RIVN", "LCID"],
     "financials": ["JPM", "BAC", "WFC", "GS", "MS", "BX", "KKR", "APO", "ARES"],
-    "healthcare": ["UNH", "CVS", "CI", "HUM", "MOH", "CNC", "THC", "HCA", "DaVita"]
+    "healthcare": ["UNH", "CVS", "CI", "HUM", "MOH", "CNC", "THC", "HCA"],
+    "overlooked_tech": ["INTC", "QCOM", "CSCO", "HPE", "DELL", "SMCI", "SNAP", "PINS", "UBER", "LYFT", "EBAY", "ETSY", "RBLX", "U", "COIN", "HOOD", "AFRM", "SOFI"]
 }
 
 async def get_quick_quote(ticker, client):
