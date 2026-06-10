@@ -214,7 +214,9 @@ async def get_ai_rec(ticker, name, price_data, fundamentals, headlines, sentimen
 - Fear & Greed: {fear_greed['score']}/100 — {fear_greed['rating']}
 
 ---
-You are advising a real investor who holds this position. Be direct, specific, and reference their actual position data. Use training knowledge to supplement any missing data.
+You are advising a real investor who holds this position. Be direct, specific, and reference their actual position data.
+
+CRITICAL — VERIFY BEFORE ANALYZING: Use web search FIRST to check (a) the most recent news and catalysts for this ticker and (b) any claim you are about to make from memory (regulatory changes, product launches, macro events). Do NOT cite catalysts from memory without verifying they are still current. If live data above is missing (e.g. no analyst ratings), say so plainly rather than guessing. Clearly distinguish what comes from live/search data vs. general knowledge.
 
 **RECOMMENDATION: [BUY MORE / HOLD / TRIM / SELL]**
 **CONVICTION: [HIGH / MEDIUM / LOW]**
@@ -281,8 +283,13 @@ Be thorough. Reference specific numbers and the client's actual position through
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
             headers={"Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01"},
-            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 2500, "messages": [{"role": "user", "content": prompt}]},
-            timeout=60
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 3000,
+                "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}],
+                "messages": [{"role": "user", "content": prompt}]
+            },
+            timeout=120
         )
         result = resp.json()
         text = "".join(c.get("text", "") for c in result.get("content", []))
@@ -464,6 +471,8 @@ Identify the TOP 2-3 most interesting opportunities in this sector. For each:
 
 Focus on NON-AI opportunities where the market may be underpricing future potential. Be specific and contrarian. Reference the actual price data above. Keep each analysis to 4 bullets max.
 
+CRITICAL: Before writing, use web search to verify the company identity of each ticker you analyze (do not confuse similar tickers) and to confirm any catalyst is CURRENT — do not cite events from memory that may have already happened or changed. If you cannot verify a catalyst, label it "unverified".
+
 End with:
 **SECTOR VERDICT:** One sentence on whether this sector is worth allocating to right now."""
 
@@ -471,8 +480,13 @@ End with:
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
             headers={"Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01"},
-            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 1000, "messages": [{"role": "user", "content": prompt}]},
-            timeout=45
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 1500,
+                "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}],
+                "messages": [{"role": "user", "content": prompt}]
+            },
+            timeout=120
         )
         result = resp.json()
         return "".join(c.get("text", "") for c in result.get("content", []))
