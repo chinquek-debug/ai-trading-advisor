@@ -9,6 +9,32 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
+# ============================================================
+# CACHE — avoids re-running expensive AI analysis
+# ============================================================
+import time
+from datetime import datetime
+
+CACHE = {}
+CACHE_TTL_SECONDS = 6 * 3600  # 6 hours
+
+def cache_get(key):
+    entry = CACHE.get(key)
+    if entry and (time.time() - entry["ts"]) < CACHE_TTL_SECONDS:
+        return entry
+    if entry:
+        del CACHE[key]
+    return None
+
+def cache_set(key, data):
+    CACHE[key] = {"ts": time.time(), "data": data}
+
+def cache_age_str(ts):
+    mins = int((time.time() - ts) / 60)
+    if mins < 1: return "just now"
+    if mins < 60: return f"{mins}m ago"
+    return f"{mins // 60}h {mins % 60}m ago"
+
 async def get_price_data(ticker, client):
     try:
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1y"
@@ -330,7 +356,7 @@ async def analyze(ticker: str, shares: float = 0, cost_basis: float = 0):
     }
 
 @app.get("/portfolio")
-async def analyze_portfolio(tickers: str, shares: str = "", costs: str = ""):
+async def analyze_portfolio(tickers: str, shares: str = "", costs: str = "", refresh: bool = False):
     ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
     shares_list = [float(s.strip()) if s.strip() else 0 for s in shares.split(",")] if shares else [0] * len(ticker_list)
     costs_list = [float(c.strip()) if c.strip() else 0 for c in costs.split(",")] if costs else [0] * len(ticker_list)
@@ -343,6 +369,16 @@ async def analyze_portfolio(tickers: str, shares: str = "", costs: str = ""):
         results = []
         for i, ticker in enumerate(ticker_list):
             try:
+                cache_key = f"pf:{ticker}:{shares_list[i]}:{costs_list[i]}"
+                if not refresh:
+                    cached = cache_get(cache_key)
+                    if cached:
+                        item = dict(cached["data"])
+                        item["cached"] = True
+                        item["cached_at"] = cache_age_str(cached["ts"])
+                        results.append(item)
+                        continue
+
                 price_data, fundamentals, news_data, sentiment = await asyncio.gather(
                     get_price_data(ticker, client),
                     get_fundamentals(ticker, client),
@@ -361,15 +397,18 @@ async def analyze_portfolio(tickers: str, shares: str = "", costs: str = ""):
                 gain_loss = round(position_value - cost_total, 2) if position_value and cost_total else None
                 gain_loss_pct = round((gain_loss / cost_total) * 100, 2) if gain_loss and cost_total else None
 
-                results.append({
+                item = {
                     "ticker": ticker,
                     "price_info": {**price_data, "name": name},
                     "fundamentals": fundamentals,
                     "sentiment": sentiment,
                     "headlines": headlines,
                     "position": {"shares": sh, "cost_basis": cb, "position_value": position_value, "cost_total": cost_total, "gain_loss": gain_loss, "gain_loss_pct": gain_loss_pct},
-                    "ai": ai
-                })
+                    "ai": ai,
+                    "cached": False
+                }
+                cache_set(cache_key, item)
+                results.append(item)
             except Exception as e:
                 results.append({"ticker": ticker, "error": str(e)})
 
@@ -494,7 +533,15 @@ End with:
         return ""
 
 @app.get("/scan/opportunities")
-async def scan_opportunities():
+async def scan_opportunities(refresh: bool = False):
+    if not refresh:
+        cached = cache_get("scan:all")
+        if cached:
+            data = dict(cached["data"])
+            data["cached"] = True
+            data["cached_at"] = cache_age_str(cached["ts"])
+            return data
+
     async with httpx.AsyncClient() as client:
         fear_greed = await get_fear_greed(client)
         sector_results = []
@@ -520,8 +567,11 @@ async def scan_opportunities():
         # Sort sectors by highest opportunity score
         sector_results.sort(key=lambda x: x["top_score"], reverse=True)
 
-        return {
+        result = {
             "sectors": sector_results,
             "fear_greed": fear_greed,
-            "total_scanned": sum(len(SCAN_UNIVERSE[s]) for s in SCAN_UNIVERSE)
+            "total_scanned": sum(len(SCAN_UNIVERSE[s]) for s in SCAN_UNIVERSE),
+            "cached": False
         }
+        cache_set("scan:all", result)
+        return result
